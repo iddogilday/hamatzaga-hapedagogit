@@ -1,12 +1,1 @@
-(function(){
-  var log = window.__groupImportLog||[];
-  var byId = {};
-  log.forEach(function(r){ (byId[r.groupId]=byId[r.groupId]||[]).push(r); });
-  var trueCollisions = Object.keys(byId).filter(function(id){
-    var arr = byId[id];
-    var teachers = new Set(arr.map(function(r){return r.teacher;}));
-    return arr.length>1 && teachers.size>1;
-  });
-  console.log('total columns logged:', log.length, '| unique group ids:', Object.keys(byId).length, '| unexpected collisions:', trueCollisions.length);
-  trueCollisions.forEach(function(id){ console.log(id, byId[id]); });
-})();
+
