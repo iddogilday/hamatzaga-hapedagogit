@@ -8,8 +8,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap" rel="stylesheet">
 <!-- >>> כתובת מרשם בתי הספר: להחליף את הערך של registryUrl בכתובת ה-/exec של המרשם <<< -->
-<script type="application/json" id="app-config">{"registryUrl": "https://script.google.com/macros/s/AKfycbyF3Nvju4ss6Lg7DpYPoXj5kyw0yvEO9EsBx6oj5rEXejV-3u_mc_-Fa2MiLRBzAmo88w/exec"}</script>
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-BWq5540jNHRKOIfl4vqk4iMOBfxDzeErKzk/d6gtgY8=' https://cdnjs.cloudflare.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src https://script.google.com https://script.googleusercontent.com; base-uri 'none'; form-action 'none'; object-src 'none'">
+<script type="application/json" id="app-config">{"registryUrl": "https://script.google.com/macros/s/AKfycbz48HpIIfjxfe2ml0GkCCNPOMh13XeGt50wtV7yNL7w9YV1-RG5ubYg5lzvutpU__cI/exec"}</script>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-jxfxzkUdTdOYeCLSKggv7Y4Vnrxg2Gcos0rGfYqJrnA=' https://cdnjs.cloudflare.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src https://script.google.com https://script.googleusercontent.com; base-uri 'none'; form-action 'none'; object-src 'none'">
 <style>
   :root{
     --paper:#EFEEE8;
@@ -1366,7 +1366,34 @@
       if(res.user && res.user.username===currentUser.username) currentUser = res.user;
     }
     function showTempPassword(name, username, pw){
-      alert('סיסמה זמנית עבור '+name+' (שם משתמש: '+displayUsername(username)+'):\n\n'+pw+'\n\nיש להעביר אותה אליו/ה באופן אישי. בכניסה הראשונה יתבקש/ת לבחור סיסמה חדשה ולהזין מייל.');
+      var old = document.getElementById('tempPwModal'); if(old) old.remove();
+      var wrap = document.createElement('div');
+      wrap.id = 'tempPwModal';
+      wrap.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; z-index:9999; padding:1em;';
+      wrap.innerHTML =
+        '<div role="dialog" aria-modal="true" style="background:#fff; border-radius:14px; max-width:440px; width:100%; padding:1.4em; direction:rtl; text-align:right; box-shadow:0 10px 40px rgba(0,0,0,.3);">' +
+          '<h3 style="margin:0 0 .5em;">סיסמה זמנית</h3>' +
+          '<p style="margin:.2em 0 .8em;">עבור <b>'+esc(name)+'</b> (שם משתמש: <b>'+esc(displayUsername(username))+'</b>)</p>' +
+          '<input id="tempPwBox" readonly value="'+esc(pw)+'" style="direction:ltr; text-align:center; font-family:monospace; font-size:1.5rem; letter-spacing:.08em; user-select:all; width:100%; padding:.5em; border:2px solid var(--brass); border-radius:10px; background:#FFF9E6;">' +
+          '<p class="inline-note" style="margin:.8em 0;">הסיסמה מוצגת פעם אחת בלבד. יש להעביר אותה אליו/ה באופן אישי. בכניסה הראשונה יתבקש/ת לבחור סיסמה חדשה ולהזין מייל.</p>' +
+          '<div style="display:flex; gap:.6em;">' +
+            '<button type="button" class="btn-primary" id="tempPwCopy">העתקה</button>' +
+            '<button type="button" class="btn-ghost" id="tempPwClose">סגירה</button>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(wrap);
+      var box = document.getElementById('tempPwBox');
+      box.focus(); box.select();
+      document.getElementById('tempPwCopy').addEventListener('click', function(){
+        box.focus(); box.select();
+        var done = function(){ showToast('הסיסמה הועתקה.'); };
+        if(navigator.clipboard && navigator.clipboard.writeText){
+          navigator.clipboard.writeText(pw).then(done, function(){ try{ document.execCommand('copy'); done(); }catch(e){ showToast('סמנו והעתיקו ידנית.'); } });
+        }else{
+          try{ document.execCommand('copy'); done(); }catch(e){ showToast('סמנו והעתיקו ידנית.'); }
+        }
+      });
+      document.getElementById('tempPwClose').addEventListener('click', function(){ wrap.remove(); });
     }
 
     document.getElementById('addUserForm').addEventListener('submit', async function(e){
