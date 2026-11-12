@@ -9,8 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap" rel="stylesheet">
 <!-- >>> כתובת מרשם בתי הספר: להחליף את הערך של registryUrl בכתובת ה-/exec של המרשם <<< -->
 <script type="application/json" id="app-config">{"registryUrl": "https://script.google.com/macros/s/AKfycbyF3Nvju4ss6Lg7DpYPoXj5kyw0yvEO9EsBx6oj5rEXejV-3u_mc_-Fa2MiLRBzAmo88w/exec"}</script>
-
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-y8E9w1JEoSWmKJXof0ELn2z1U43D76JIUUJoLxunY/Y=' https://cdnjs.cloudflare.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src https://script.google.com https://script.googleusercontent.com; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-94QS//QKN/H+GIATX/VwzO8bwMycI/Xsltyfsvpn/5c=' https://cdnjs.cloudflare.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src https://script.google.com https://script.googleusercontent.com; base-uri 'none'; form-action 'none'; object-src 'none'">
 <style>
   :root{
     --paper:#EFEEE8;
@@ -1586,7 +1585,7 @@
 
   /* ===================== Admin: Roster upload ===================== */
   /* ---- Class list update: compares a plain class list (xlsx) with the roster and applies only what the admin confirms ---- */
-  function clsKey(name){ return String(name||'').replace(/[^0-9A-Za-z֐-׿]/g,'').toLowerCase(); }
+  function clsKey(name){ return String(name||'').replace(/[`'׳״"‘’]/g,'').replace(/[^0-9A-Za-z֐-׿]/g,'').toLowerCase(); } // י' 1, י׳ 1 and י`1 are the same class
   function nameKey(name){
     return String(name||'').replace(/[`'׳"״‘’]/g,'').replace(/\s+/g,' ').trim().toLowerCase().split(' ').sort().join(' ');
   }
@@ -2015,7 +2014,7 @@
     // list is always parsed from "the rest", and the level (if any) is pulled out of it separately.
     var m = firstLine.match(/^([^,]+),\s*([^,]+),\s*(.*)$/);
     var teacherName='', subject='', rest='';
-    if(m){ teacherName=m[1].trim(); subject=m[2].trim(); rest=m[3].trim(); }
+    if(m){ teacherName=m[1].trim().replace(/^קבוצת\s+לימוד\s+/,''); subject=m[2].trim(); rest=m[3].trim(); }
     else{ subject = firstLine.trim(); }
     var levelMatch = rest.match(/\(רמה:\s*([^)]+)\)/);
     var level = levelMatch ? levelMatch[1].trim().replace(/``/g,'"') : '';
@@ -2059,7 +2058,7 @@
 
     var headerRow = matrix[headerRowIdx];
     var groupCols = [];
-    for(var c2=1;c2<headerRow.length;c2++){
+    for(var c2=0;c2<headerRow.length;c2++){
       if(c2===nameCol||c2===classCol||c2===idCol||c2===genderCol) continue;
       var headerVal = headerRow[c2];
       if(headerVal && String(headerVal).indexOf(',')!==-1){
@@ -2112,7 +2111,7 @@
       }
     });
 
-    var seenClassIds = {};
+    var seenClassIds = {}, seenClassKeys = {};
     var seenStudentIds = {};
     for(var r2=headerRowIdx+1; r2<matrix.length; r2++){
       var row = matrix[r2];
@@ -2121,14 +2120,18 @@
       var className = String((classCol!==-1 ? row[classCol] : '')||'').trim();
       var idNum = String((idCol!==-1 ? row[idCol] : '')||'').trim();
 
-      var classId = className ? 'class_'+slugify(className) : 'class_unassigned';
-      var cls = findClass(classId);
+      // The same class is written י' 1 / י׳ 1 / י`1 in different exports: match an existing class by a
+      // normalized name first, so a re-import never creates an empty duplicate class (and moves the homeroom link to it).
+      var cls = className ? roster.classes.filter(function(c){ return clsKey(c.name)===clsKey(className); })[0] : null;
+      var classId = cls ? cls.id : (className ? 'class_'+slugify(className) : 'class_unassigned');
+      if(!cls) cls = findClass(classId);
       if(!cls){
         cls = {id:classId, name:className||'ללא שיוך', homeroomTeacherUsername:''};
         roster.classes.push(cls);
         newClasses++;
       }
       seenClassIds[classId] = true;
+      seenClassKeys[clsKey(className)] = true;
 
       var studentId = idNum ? 'stu_'+slugify(idNum) : 'stu_'+slugify(className)+'_'+slugify(studentName);
       var stu = findStudent(studentId);
@@ -2187,12 +2190,32 @@
       if(touchedGroupIds[g.id]) return true;
       var tokens = (g.classesLabel||'').split(',').map(function(t){ return t.trim(); }).filter(Boolean);
       if(!tokens.length) return true; // no class info to judge by - leave it alone
-      var allCoveredByThisFile = tokens.every(function(t){ return !!seenClassIds['class_'+slugify(t)]; });
+      var allCoveredByThisFile = tokens.every(function(t){ return !!seenClassIds['class_'+slugify(t)] || !!seenClassKeys[clsKey(t)]; });
       if(allCoveredByThisFile){ removedGroups++; return false; }
       return true;
     });
 
-    return {newStudents:newStudents, newClasses:newClasses, newGroups:newGroups, newTeachers:newTeachers, removedStudents:removedStudentIds.length, removedGroups:removedGroups};
+    // Cleanup of leftovers from earlier imports: an untouched group with the same name and the same
+    // feeding classes as a group in this file is a stale duplicate; an empty class with the same
+    // normalized name as a class in this file is a stale duplicate class.
+    var gSig = function(g){ return clsKey(g.name)+'|'+(g.classesLabel||'').split(',').map(clsKey).filter(Boolean).sort().join(','); };
+    var touchedSigs = {};
+    roster.groups.forEach(function(g){ if(touchedGroupIds[g.id]) touchedSigs[gSig(g)] = true; });
+    roster.groups = roster.groups.filter(function(g){
+      if(touchedGroupIds[g.id]) return true;
+      if(touchedSigs[gSig(g)]){ removedGroups++; return false; }
+      return true;
+    });
+    var removedClasses = 0;
+    roster.classes = roster.classes.filter(function(c){
+      if(seenClassIds[c.id]) return true;
+      var key = clsKey(c.name);
+      var twin = roster.classes.some(function(o){ return o!==c && seenClassIds[o.id] && clsKey(o.name)===key; });
+      var empty = !roster.students.some(function(s){ return s.classId===c.id; });
+      if(twin && empty){ removedClasses++; return false; }
+      return true;
+    });
+    return {newStudents:newStudents, newClasses:newClasses, newGroups:newGroups, newTeachers:newTeachers, removedStudents:removedStudentIds.length, removedGroups:removedGroups, removedClasses:removedClasses};
   }
 
   /* ===================== Subject teacher ===================== */
@@ -2298,7 +2321,8 @@
         '<div style="margin:.2em 0 .8em;"><button type="button" class="btn-ghost" id="infoMeetingBtn">🗂️ ישיבת מידע – מצגת התלמידים</button></div>' : '') +
       (students.length ? students.map(function(s){
         return '<div class="student-row"><div class="name-cell"><div class="avatar">'+esc(initials(s.name))+'</div>' +
-          '<button class="student-name-link" data-student="'+s.id+'">'+esc(s.name)+'</button></div></div>';
+          '<button class="student-name-link" data-student="'+s.id+'">'+esc(s.name)+'</button></div>' +
+          ((!editable && cohortType==='group' && userHasRole('admin')) ? '<button type="button" class="btn-ghost" data-rm-from-group="'+s.id+'" style="margin-inline-start:auto;">הסר מהקבוצה</button>' : '') + '</div>';
       }).join('') : '<div class="empty-state">אין תלמידים ברשימה זו.</div>') +
       '</div>';
 
@@ -2315,6 +2339,20 @@
     // full מליאה presentation screen instead of the plain editable-look profile, per the
     // request that this route "look like the מליאה screen" - it already supports being
     // entered this way (editable:false, returnScreen:'browse_student_list').
+    content.querySelectorAll('[data-rm-from-group]').forEach(function(b){
+      b.addEventListener('click', async function(){
+        var sid = b.getAttribute('data-rm-from-group'), g = findGroup(cohortId), st = findStudent(sid);
+        if(!g || !st) return;
+        if(!confirm('להסיר את '+st.name+' מהקבוצה "'+g.name+'"? (התלמיד נשאר בכיתה. ייבוא עתידי עשוי להחזיר אותו אם הוא רשום בקובץ.)')) return;
+        var ix = g.studentIds.indexOf(sid); if(ix===-1) return;
+        g.studentIds.splice(ix,1);
+        setBtnBusy(b, true, 'שומר…');
+        var ok = await saveRoster();
+        if(!ok){ g.studentIds.splice(ix,0,sid); showToast('השמירה נכשלה, לא בוצע שינוי.'); renderShell(); return; }
+        showToast('הוסר מהקבוצה.');
+        renderStudentList(content, cohortId, editable, cohortType);
+      });
+    });
     var openAsPresentation = !editable && cohortType==='group';
     content.querySelectorAll('[data-student]').forEach(function(b){
       b.addEventListener('click', function(){
